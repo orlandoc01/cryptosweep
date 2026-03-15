@@ -1,0 +1,36 @@
+{
+  "data": [
+    {
+      "allow_deposits": true,
+      "allow_withdrawals": true,
+      "balance": {
+        "amount": "100.00",
+        "currency": "USDC"
+      },
+      "currency": {
+        "code": "USDC",
+        "name": "USD Coin",
+        "type": "crypto"
+      },
+      "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "name": "USDC Wallet",
+      "type": "wallet"
+    },
+    {
+      "allow_deposits": true,
+      "allow_withdrawals": true,
+      "balance": {
+        "amount": "50.00",
+        "currency": "USD"
+      },
+      "currency": {
+        "code": "USD",
+        "name": "US Dollar",
+        "type": "fiat"
+      },
+      "id": "ffffffff-1111-2222-3333-444444444444",
+      "name": "USD Wallet",
+      "type": "wallet"
+    }
+  ]
+}

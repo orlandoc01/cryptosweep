@@ -1,0 +1,76 @@
+# cryptosweep — sample configuration
+#
+# Copy this file to ~/.cryptosweep/config.toml and fill in your
+# credentials and addresses:
+#
+#   mkdir -p ~/.cryptosweep
+#   cp config.sample.toml ~/.cryptosweep/config.toml
+#
+
+# Maximum USDC deposit the system will auto-liquidate. Deposits above this
+# are recorded as Failed and you are notified via Telegram. Guards against
+# data anomalies or unexpected large transfers.
+max_auto_amount = "10000.00"
+
+# Default Coinbase payment method ID. Used when a deposit address does
+# not specify its own. Find yours at:
+#   cargo test coinbase_find_account_ids -- --ignored --nocapture
+default_payment_method_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# Coinbase CDP API credentials (trade + withdraw scope only).
+# Key name format: organizations/{org_id}/apiKeys/{key_id}
+coinbase_api_key = "organizations/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx/apiKeys/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# PKCS8 PEM-encoded ECDSA P-256 private key from Coinbase CDP.
+# Paste the full PEM block with literal \n for newlines.
+# The key below is a throwaway test key — replace it with your real CDP key.
+coinbase_api_secret = "-----BEGIN EC PRIVATE KEY-----\nMHcCAQEEIGAVs5p9ZHJLjMoKDwjjsaKhVzX4bMKl2ySWKKzNABADoAoGCCqGSM49\nAwEHoUQDQgAEUcV90pAXQifNMG9mN4d94GJWf4Xf9pH2u5JVe3VyBSjlF1switjo\nGAh3/nOUwYgMBVfkhzwFLxC86+tSCL3vwg==\n-----END EC PRIVATE KEY-----"
+
+# Optional: pre-configured Coinbase account UUIDs to skip account list
+# pagination. Discover with:
+#   cargo test coinbase_find_account_ids -- --ignored --nocapture
+# coinbase_usdc_account_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+# coinbase_usd_account_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# Telegram bot token and chat ID for notifications.
+# Create a bot via @BotFather, then get your chat ID via @userinfobot.
+telegram_bot_token = "123456789:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+telegram_chat_id = "-1001234567890"
+
+# Deposit addresses to monitor. Each address is polled across all 5 chains
+# (Ethereum, Base, Arbitrum, Polygon, Optimism). Map each to the Coinbase
+# Payment method for the destination bank account.
+#
+# Generate dedicated addresses in Coinbase under Receive — do not reuse
+# addresses used for other trading activity.
+[[deposit_addresses]]
+address = "0x0000000000000000000000000000000000000001"
+payment_method_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# Add more deposit addresses for additional bank destinations:
+# [[deposit_addresses]]
+# address = "0x0000000000000000000000000000000000000002"
+# payment_method_id = "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy"
+
+# Minimum block confirmations before a deposit is eligible for liquidation.
+# Falls back to 14 for any chain not listed here.
+[confirmation_blocks]
+ethereum = 20
+base = 14
+arbitrum = 14
+polygon = 14
+optimism = 14
+
+# Starting block number per chain for the first scan. Set these to a recent
+# block number at deployment time so the first run doesn't scan from genesis.
+# Chains without an entry are skipped (with a warning).
+[start_blocks]
+ethereum = 22000000
+base = 28000000
+arbitrum = 300000000
+polygon = 70000000
+optimism = 135000000
+
+# State file path (defaults to ~/.cryptosweep/state.json).
+# Uncomment to override:
+# state_file = "/path/to/custom/state.json"

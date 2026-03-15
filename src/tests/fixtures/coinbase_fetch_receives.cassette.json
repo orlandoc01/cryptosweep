@@ -1,0 +1,60 @@
+[
+  {
+    "data": {
+      "allow_deposits": true,
+      "allow_withdrawals": true,
+      "balance": {
+        "amount": "100.00",
+        "currency": "USDC"
+      },
+      "currency": {
+        "code": "USDC",
+        "name": "USD Coin",
+        "type": "crypto"
+      },
+      "id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "name": "USDC Wallet",
+      "type": "wallet"
+    }
+  },
+  {
+    "data": [
+      {
+        "id": "tx-fake-0001-aaaa-bbbbccccdddd",
+        "type": "sell",
+        "amount": {
+          "amount": "-25.00",
+          "currency": "USDC"
+        },
+        "created_at": "2026-03-01T12:00:00Z"
+      },
+      {
+        "id": "tx-fake-0002-aaaa-bbbbccccdddd",
+        "type": "send",
+        "amount": {
+          "amount": "75.00",
+          "currency": "USDC"
+        },
+        "created_at": "2026-02-20T07:00:00Z"
+      },
+      {
+        "id": "tx-fake-0003-aaaa-bbbbccccdddd",
+        "type": "send",
+        "amount": {
+          "amount": "-30.00",
+          "currency": "USDC"
+        },
+        "created_at": "2026-02-15T08:30:00Z"
+      },
+      {
+        "id": "tx-fake-0004-aaaa-bbbbccccdddd",
+        "type": "interest",
+        "amount": {
+          "amount": "2.50",
+          "currency": "USDC"
+        },
+        "created_at": "2026-02-10T14:00:00Z"
+      }
+    ]
+  }
+]

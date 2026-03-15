@@ -1,0 +1,148 @@
+[
+  {
+    "trade": {
+      "amount": {
+        "currency": "USDC",
+        "value": "5"
+      },
+      "cancellation_reason": null,
+      "exchange_rate": {
+        "currency": "USDC",
+        "value": "1"
+      },
+      "fees": [
+        {
+          "amount": {
+            "currency": "USD",
+            "value": "0"
+          },
+          "description": "Fee charged by Coinbase",
+          "label": "Coinbase fee",
+          "title": "Coinbase Fee"
+        }
+      ],
+      "id": "aaaa1111-bbbb-cccc-dddd-eeeeeeee0001",
+      "source": {
+        "ledger_account": {
+          "account_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+          "currency": "USDC",
+          "owner": {
+            "id": "fake-owner-id-000000000000",
+            "type": "RETAIL"
+          }
+        },
+        "network": "internal_retail",
+        "type": "LEDGER_ACCOUNT"
+      },
+      "source_currency": "USDC",
+      "source_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "status": "TRADE_STATUS_UNSPECIFIED",
+      "subtotal": {
+        "currency": "USD",
+        "value": "5"
+      },
+      "target": {
+        "ledger_account": {
+          "account_id": "ffffffff-1111-2222-3333-444444444444",
+          "currency": "USD",
+          "owner": {
+            "id": "fake-owner-id-000000000000",
+            "type": "RETAIL"
+          }
+        },
+        "network": "internal_retail",
+        "type": "LEDGER_ACCOUNT"
+      },
+      "target_currency": "USD",
+      "target_id": "fake-target-id-00000000000",
+      "total": {
+        "currency": "USD",
+        "value": "5"
+      },
+      "total_fee": {
+        "amount": {
+          "currency": "USD",
+          "value": "0"
+        },
+        "title": "Fee Total"
+      },
+      "user_entered_amount": {
+        "currency": "USD",
+        "value": "5"
+      }
+    }
+  },
+  {
+    "trade": {
+      "amount": {
+        "currency": "USDC",
+        "value": "5"
+      },
+      "cancellation_reason": null,
+      "exchange_rate": {
+        "currency": "USDC",
+        "value": "1"
+      },
+      "fees": [
+        {
+          "amount": {
+            "currency": "USD",
+            "value": "0"
+          },
+          "description": "Fee charged by Coinbase",
+          "label": "Coinbase fee",
+          "title": "Coinbase Fee"
+        }
+      ],
+      "id": "aaaa1111-bbbb-cccc-dddd-eeeeeeee0001",
+      "source": {
+        "ledger_account": {
+          "account_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+          "currency": "USDC",
+          "owner": {
+            "id": "fake-owner-id-000000000000",
+            "type": "RETAIL"
+          }
+        },
+        "network": "internal_retail",
+        "type": "LEDGER_ACCOUNT"
+      },
+      "source_currency": "USDC",
+      "source_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "status": "TRADE_STATUS_CREATED",
+      "subtotal": {
+        "currency": "USD",
+        "value": "5"
+      },
+      "target": {
+        "ledger_account": {
+          "account_id": "ffffffff-1111-2222-3333-444444444444",
+          "currency": "USD",
+          "owner": {
+            "id": "fake-owner-id-000000000000",
+            "type": "RETAIL"
+          }
+        },
+        "network": "internal_retail",
+        "type": "LEDGER_ACCOUNT"
+      },
+      "target_currency": "USD",
+      "target_id": "fake-target-id-00000000000",
+      "total": {
+        "currency": "USD",
+        "value": "5"
+      },
+      "total_fee": {
+        "amount": {
+          "currency": "USD",
+          "value": "0"
+        },
+        "title": "Fee Total"
+      },
+      "user_entered_amount": {
+        "currency": "USD",
+        "value": "5"
+      }
+    }
+  }
+]

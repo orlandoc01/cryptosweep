@@ -1,0 +1,66 @@
+[package]
+name = "cryptosweep"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Async runtime (multi-threaded for concurrent API calls)
+tokio = { version = "1", features = ["full"] }
+
+# Serialization framework + JSON for state file + TOML for config
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Financial arithmetic — never use f64 for money
+rust_decimal = { version = "1", features = ["serde-with-str"] }
+rust_decimal_macros = "1"
+
+# Date/time handling with serde support
+chrono = { version = "0.4", features = ["serde"] }
+
+# Ergonomic error type derivation
+thiserror = "2"
+
+# Derive Display, EnumString, etc. for enums
+strum = { version = "0.27", features = ["derive"] }
+
+# HTTP client — needed for Coinbase API and block explorer queries
+reqwest = { version = "0.12", features = ["json"] }
+
+# Typed Ethereum JSON-RPC client (block heights, event logs)
+alloy = { version = "1", features = ["provider-http", "rpc-types-eth"] }
+
+# Async combinators (join_all for concurrent chain scans)
+futures = "0.3"
+
+# Stream adapters for tokio channels (ReceiverStream for cbworker pipeline)
+tokio-stream = "0.1"
+
+# Structured logging
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# Cross-platform file locking (lock file for preventing overlapping cron runs)
+fs2 = "0.4"
+
+# Telegram bot API (send error notifications)
+teloxide = { version = "0.13", features = ["macros"] }
+
+# ECDSA P-256 for Coinbase CDP API JWT authentication (ES256)
+p256 = { version = "0.13", features = ["ecdsa", "pkcs8", "pem"] }
+
+# UUIDv4 generation for Coinbase JWT nonces
+uuid = { version = "1", features = ["v4"] }
+
+# Base64 URL-safe encoding for JWT header/payload
+base64 = "0.22"
+
+# Declarative struct validation (deposit address format, non-empty lists)
+garde = { version = "0.22", features = ["derive"] }
+
+[dev-dependencies]
+# Temporary directories for persistence tests
+tempfile = "3"
+# Secure random number generation (for P-256 test key generation)
+rand_core = { version = "0.6", features = ["getrandom"] }
