@@ -5,6 +5,25 @@ liquidates them on Coinbase (USDC → USD), and withdraws the proceeds via a lin
 
 Runs every 15 minutes. A file lock prevents overlapping runs.
 
+## Table of Contents
+
+- [Supported Chains](#supported-chains)
+- [Architecture](#architecture)
+- [Module Structure](#module-structure)
+- [Configuration](#configuration)
+  - [Config fields](#config-fields)
+  - [Example](#example)
+  - [Telegram bot setup](#telegram-bot-setup)
+- [Requirements](#requirements)
+- [Install](#install)
+  - [Build from source](#build-from-source)
+  - [Set up config](#set-up-config)
+  - [Set up log file](#set-up-log-file)
+  - [Set up cron](#set-up-cron)
+  - [Run manually](#run-manually)
+- [Safety](#safety)
+- [Testing](#testing)
+
 ## Supported Chains
 
 | Chain    | Chain ID | USDC Contract                              |
@@ -131,6 +150,51 @@ arbitrum = 300000000
 polygon = 70000000
 optimism = 135000000
 ```
+
+### Telegram bot setup
+
+Cryptosweep sends notifications via Telegram when deposits are processed,
+withdrawals are initiated, or errors occur. You need a bot token and a chat ID.
+
+**1. Create a bot**
+
+- Open Telegram and message [@BotFather](https://t.me/BotFather).
+- Send `/newbot` and follow the prompts to choose a name and username.
+- BotFather replies with a token like `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`. Copy it — this is your `telegram_bot_token`.
+
+**2. Get your chat ID**
+
+For a **personal chat** (notifications sent directly to you):
+
+- Message [@userinfobot](https://t.me/userinfobot) — it replies with your numeric user ID.
+- Use that number as `telegram_chat_id`.
+
+For a **group chat**:
+
+- Add your bot to the group.
+- Send a message in the group, then open this URL in a browser (replace the token):
+  ```
+  https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates
+  ```
+- Find the `"chat":{"id": ...}` field in the response. Group IDs are negative (e.g., `-1001234567890`).
+- Use that number as `telegram_chat_id`.
+
+**3. Add to config**
+
+```toml
+telegram_bot_token = "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
+telegram_chat_id = "-1001234567890"
+```
+
+**4. Verify**
+
+Send a test message to confirm the bot can reach your chat:
+
+```bash
+curl -s "https://api.telegram.org/bot<YOUR_BOT_TOKEN>/sendMessage?chat_id=<YOUR_CHAT_ID>&text=cryptosweep+test"
+```
+
+You should receive a "cryptosweep test" message in Telegram.
 
 ## Requirements
 
