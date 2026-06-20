@@ -9,11 +9,11 @@ use alloy::providers::{Provider, ProviderBuilder};
 use alloy::rpc::client::ClientBuilder;
 use alloy::rpc::types::Filter;
 use alloy::transports::layers::RetryBackoffLayer;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
-use tracing::info;
+use tracing::{info, warn};
 
-use crate::types::{AppError, BlockExplorer, Chain, UsdcReceive};
+use crate::types::{AppError, BlockExplorer, Chain, FetchReceivesOk, UsdcReceive};
 
 /// Maximum retry attempts on transient failures (429, 503).
 const MAX_RETRIES: u32 = 5;
@@ -46,10 +46,13 @@ const TRANSFER_EVENT_TOPIC: FixedBytes<32> = FixedBytes([
 fn rpc_url(chain: Chain) -> &'static str {
     match chain {
         Chain::Ethereum => "https://ethereum.publicnode.com",
-        Chain::Base     => "https://base.publicnode.com",
+        Chain::Base     => "https://mainnet.base.org",
         Chain::Arbitrum => "https://arb1.arbitrum.io/rpc",
         Chain::Polygon  => "https://polygon-bor-rpc.publicnode.com",
         Chain::Optimism => "https://mainnet.optimism.io",
+        // Alchemy-backed mainnet endpoint; allows 1,000-block eth_getLogs
+        // requests (vs. 100 on QuickNode's rpc.monad.xyz).
+        Chain::Monad    => "https://rpc1.monad.xyz",
     }
 }
 
@@ -107,6 +110,49 @@ impl LiveBlockExplorer {
         let provider = ProviderBuilder::new().connect_client(rpc_client);
         Self { chain, usdc_contract, provider: Box::new(provider) }
     }
+
+    /// Fetch a single chunk of Transfer logs and parse them into `UsdcReceive`s.
+    async fn fetch_receives_chunk(
+        &self,
+        deposit_address: Address,
+        from: u64,
+        to: u64,
+        fetched_at: DateTime<Utc>,
+    ) -> Result<Vec<UsdcReceive>, AppError> {
+        // Filter for ERC-20 Transfer events to the deposit address.
+        // topic0 = Transfer signature, topic1 = from (any), topic2 = to (deposit address).
+        let filter = Filter::new()
+            .address(self.usdc_contract)
+            .from_block(from)
+            .to_block(to)
+            .event_signature(TRANSFER_EVENT_TOPIC)
+            .topic2(deposit_address);
+
+        let logs = self.provider
+            .get_logs(&filter)
+            .await
+            .map_err(|e| AppError::Explorer(format!(
+                "{}: get_logs failed for blocks {from}-{to}: {e}",
+                self.chain,
+            )))?;
+
+        logs.into_iter()
+            .map(|log| {
+                let block_number = log.block_number
+                    .ok_or_else(|| AppError::Explorer("Log missing block_number".into()))?;
+                let tx_hash = log.transaction_hash
+                    .ok_or_else(|| AppError::Explorer("Log missing transaction_hash".into()))?;
+                let raw_amount = U256::from_be_slice(log.data().data.as_ref());
+                let amount = u256_to_decimal(raw_amount, USDC_DECIMALS)?;
+                Ok(UsdcReceive {
+                    tx_hash: format!("{tx_hash:#x}"),
+                    amount,
+                    block_number,
+                    fetched_at,
+                })
+            })
+            .collect()
+    }
 }
 
 impl BlockExplorer for LiveBlockExplorer {
@@ -125,53 +171,64 @@ impl BlockExplorer for LiveBlockExplorer {
         &self,
         address: &str,
         since_block: u64,
-    ) -> Result<Vec<UsdcReceive>, AppError> {
+        to_block: u64,
+    ) -> Result<FetchReceivesOk, AppError> {
         let deposit_address = parse_address(address)?;
-
-        // Filter for ERC-20 Transfer events to the deposit address.
-        // topic0 = Transfer signature, topic1 = from (any), topic2 = to (deposit address).
-        let filter = Filter::new()
-            .address(self.usdc_contract)
-            .from_block(since_block)
-            .event_signature(TRANSFER_EVENT_TOPIC)
-            .topic2(deposit_address);
-
-        let logs = self.provider
-            .get_logs(&filter)
-            .await
-            .map_err(|e| AppError::Explorer(format!(
-                "{}: get_logs failed: {e}", self.chain
-            )))?;
         let now = Utc::now();
+        let mut receives: Vec<UsdcReceive> = Vec::new();
+        // Highest `chunk_end` that successfully returned. `None` until
+        // at least one chunk has fully completed.
+        let mut last_chunk_end: Option<u64> = None;
 
-        let receives: Vec<UsdcReceive> = logs
-            .into_iter()
-            .map(|log| {
-                let block_number = log.block_number
-                    .ok_or_else(|| AppError::Explorer("Log missing block_number".into()))?;
-                let tx_hash = log.transaction_hash
-                    .ok_or_else(|| AppError::Explorer("Log missing transaction_hash".into()))?;
-                let raw_amount = U256::from_be_slice(log.data().data.as_ref());
-                let amount = u256_to_decimal(raw_amount, USDC_DECIMALS)?;
-
-                Ok(UsdcReceive {
-                    tx_hash: format!("{tx_hash:#x}"),
-                    amount,
-                    block_number,
-                    fetched_at: now,
-                })
-            })
-            .collect::<Result<_, AppError>>()?;
+        // Chunk the scan window to stay under provider per-request block
+        // range limits (e.g. base.publicnode.com caps eth_getLogs at
+        // 50,000 blocks). On mid-scan failure we return what we've got
+        // so the orchestrator can still advance the frontier — preventing
+        // re-scans of already-processed chunks on the next cron run.
+        let chunk_size = self.chain.eth_get_logs_chunk_size();
+        let mut from = since_block;
+        while from <= to_block {
+            let chunk_end = from.saturating_add(chunk_size - 1).min(to_block);
+            match self.fetch_receives_chunk(deposit_address, from, chunk_end, now).await {
+                Ok(chunk) => {
+                    receives.extend(chunk);
+                    last_chunk_end = Some(chunk_end);
+                    from = chunk_end.saturating_add(1);
+                }
+                Err(e) => {
+                    // Err with zero progress propagates so the orchestrator
+                    // can trigger stale-alerting. Partial progress returns
+                    // Ok with whatever we've collected.
+                    let Some(frontier) = last_chunk_end else { return Err(e) };
+                    warn!(
+                        chain = %self.chain,
+                        address,
+                        since_block,
+                        confirmed_frontier = frontier,
+                        to_block,
+                        %e,
+                        "USDC receives scan stopped early — returning partial progress",
+                    );
+                    return Ok(FetchReceivesOk { receives, confirmed_frontier: frontier });
+                }
+            }
+        }
 
         info!(
             chain = %self.chain,
             address,
             since_block,
+            to_block,
             count = receives.len(),
             "Fetched USDC receives"
         );
 
-        Ok(receives)
+        // `last_chunk_end` is None only when since_block > to_block (empty
+        // scan window). Treat as a no-op full scan: frontier = to_block.
+        Ok(FetchReceivesOk {
+            receives,
+            confirmed_frontier: last_chunk_end.unwrap_or(to_block),
+        })
     }
 }
 

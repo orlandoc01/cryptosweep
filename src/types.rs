@@ -88,6 +88,7 @@ pub enum Chain {
     Arbitrum,
     Polygon,
     Optimism,
+    Monad,
 }
 
 impl Chain {
@@ -100,6 +101,18 @@ impl Chain {
             Chain::Arbitrum => "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
             Chain::Polygon  => "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
             Chain::Optimism => "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+            Chain::Monad    => "0x754704Bc059F8C67012fEd69BC8A327a5aafb603",
+        }
+    }
+
+    /// Maximum block span per `eth_getLogs` request for this chain's
+    /// public RPC endpoint. Sized to stay under the provider's per-request
+    /// cap — Monad's Alchemy endpoint caps at 1,000 blocks, while the
+    /// other chains we use tolerate 10,000.
+    pub fn eth_get_logs_chunk_size(&self) -> u64 {
+        match self {
+            Chain::Monad => 1_000,
+            _            => 10_000,
         }
     }
 }
@@ -298,6 +311,18 @@ pub struct UsdcReceive {
     pub fetched_at: DateTime<Utc>,
 }
 
+/// `Ok` value of `fetch_usdc_receives`. Carries the highest block
+/// successfully scanned alongside the receives so the orchestrator can
+/// advance the chain frontier even when a chunked scan stops early.
+#[derive(Debug)]
+pub struct FetchReceivesOk {
+    pub receives: Vec<UsdcReceive>,
+    /// Highest block (inclusive) successfully scanned. Equals the
+    /// requested `to_block` on full success; less than `to_block` when
+    /// a chunk failed after earlier chunks had already succeeded.
+    pub confirmed_frontier: u64,
+}
+
 // ---------------------------------------------------------------------------
 // Module traits
 // ---------------------------------------------------------------------------
@@ -312,14 +337,24 @@ pub trait BlockExplorer: Send + Sync {
     /// `current_block - receive.block_number >= confirmation_blocks`.
     async fn get_block_height(&self) -> Result<u64, AppError>;
 
-    /// Returns all USDC ERC-20 receives to `address` with block number
-    /// greater than `since_block`. Returns an empty vec if none found.
+    /// Scans the inclusive block range `[since_block, to_block]` for USDC
+    /// ERC-20 receives to `address`. Implementations are expected to
+    /// chunk requests internally to stay within RPC provider
+    /// `eth_getLogs` limits.
+    ///
+    /// On full success, returns `Ok` with `confirmed_frontier == to_block`.
+    /// On partial failure (≥1 chunk succeeded, later chunk failed),
+    /// returns `Ok` with `confirmed_frontier` set to the end of the last
+    /// successful chunk and only the receives collected so far. Only a
+    /// failure with zero progress returns `Err`.
+    ///
     /// The caller is responsible for confirmation filtering and deduplication.
     async fn fetch_usdc_receives(
         &self,
         address: &str,
         since_block: u64,
-    ) -> Result<Vec<UsdcReceive>, AppError>;
+        to_block: u64,
+    ) -> Result<FetchReceivesOk, AppError>;
 }
 
 /// Coinbase client: exchange-side operations.
@@ -355,8 +390,8 @@ mod tests {
     // -- Chain tests --
 
     #[test]
-    fn chain_iter_returns_five() {
-        assert_eq!(Chain::iter().count(), 5);
+    fn chain_iter_returns_all_variants() {
+        assert_eq!(Chain::iter().count(), 6);
     }
 
     #[test]
@@ -366,6 +401,7 @@ mod tests {
         assert_eq!(Chain::Arbitrum.to_string(), "arbitrum");
         assert_eq!(Chain::Polygon.to_string(), "polygon");
         assert_eq!(Chain::Optimism.to_string(), "optimism");
+        assert_eq!(Chain::Monad.to_string(), "monad");
     }
 
     #[test]

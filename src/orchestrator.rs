@@ -268,8 +268,11 @@ impl<E: BlockExplorer> ChainDepositCheck<'_, E> {
     /// Fetch USDC receives for a single address and send each eligible
     /// deposit to the worker channel.
     ///
-    /// Returns a `ChainResult` with `confirmed_frontier: None` when
-    /// `fetch_usdc_receives` fails.
+    /// Returns a `ChainResult` with `confirmed_frontier: None` when the
+    /// fetch failed with zero progress. On partial-chunk failure, the
+    /// explorer returns `Ok` with `confirmed_frontier < to_block` — we
+    /// clamp the frontier to that value so the next run resumes from
+    /// there instead of re-scanning from `since_block`.
     async fn address_scan(
         &self,
         address: &str,
@@ -277,11 +280,11 @@ impl<E: BlockExplorer> ChainDepositCheck<'_, E> {
         since_block: u64,
         current_block: u64,
     ) -> ChainResult {
-        let receives = match self.explorer
-            .fetch_usdc_receives(address, since_block)
+        let fetch = match self.explorer
+            .fetch_usdc_receives(address, since_block, current_block)
             .await
         {
-            Ok(r) => r,
+            Ok(f) => f,
             Err(e) if self.is_chain_stale() => {
                 error!(chain = %self.chain, address, %e, "Failed to fetch USDC receives (stale — escalating)");
                 return ChainResult {
@@ -302,7 +305,7 @@ impl<E: BlockExplorer> ChainDepositCheck<'_, E> {
         let mut result = ChainResult::EMPTY;
         let mut scan_dedup: HashSet<String> = HashSet::new();
 
-        for receive in &receives {
+        for receive in &fetch.receives {
             if self.send_if_eligible(
                 address, payment_method_id, current_block, receive, &scan_dedup,
             ).await {
@@ -311,10 +314,13 @@ impl<E: BlockExplorer> ChainDepositCheck<'_, E> {
             }
         }
 
-        // Successful fetch — advance the confirmed frontier for this scan.
-        result.confirmed_frontier = Some(current_block.saturating_sub(
+        // Advance the frontier to min(actually scanned, confirmation floor).
+        // The confirmation floor caps normal full-scan advancement; the
+        // scanned cap keeps us from jumping past an unfinished partial scan.
+        let confirmation_floor = current_block.saturating_sub(
             self.config.confirmation_blocks_for(self.chain),
-        ));
+        );
+        result.confirmed_frontier = Some(fetch.confirmed_frontier.min(confirmation_floor));
 
         result
     }
@@ -410,6 +416,7 @@ mod tests {
                     block_height: explorer.block_height,
                     fail_block_height: explorer.fail_block_height,
                     fail_receives: explorer.fail_receives,
+                    partial_scan_through: explorer.partial_scan_through,
                 })
             })
             .collect()
@@ -458,6 +465,7 @@ mod tests {
             block_height: 200, // 100 confirmations, well above default 14
             fail_block_height: false,
             fail_receives: false,
+            partial_scan_through: None,
         };
 
         let mut coinbase = MockCoinbase::new();
@@ -507,6 +515,7 @@ mod tests {
             block_height: 105, // only 5 confirmations
             fail_block_height: false,
             fail_receives: false,
+            partial_scan_through: None,
         };
 
         let coinbase = MockCoinbase::new();
@@ -540,6 +549,7 @@ mod tests {
             block_height: 200,
             fail_block_height: false,
             fail_receives: false,
+            partial_scan_through: None,
         };
 
         let coinbase = MockCoinbase::new();
@@ -585,6 +595,7 @@ mod tests {
             block_height: 200,
             fail_block_height: false,
             fail_receives: false,
+            partial_scan_through: None,
         };
 
         let coinbase = MockCoinbase::new();
@@ -619,6 +630,7 @@ mod tests {
             block_height: 0,
             fail_block_height: true,
             fail_receives: false,
+            partial_scan_through: None,
         };
 
         let coinbase = MockCoinbase::new();
@@ -651,6 +663,7 @@ mod tests {
             block_height: 0,
             fail_block_height: true,
             fail_receives: false,
+            partial_scan_through: None,
         };
 
         let coinbase = MockCoinbase::new();
@@ -676,6 +689,7 @@ mod tests {
             block_height: 0,
             fail_block_height: true,
             fail_receives: false,
+            partial_scan_through: None,
         };
 
         let coinbase = MockCoinbase::new();
@@ -707,6 +721,7 @@ mod tests {
             block_height: 200,
             fail_block_height: false,
             fail_receives: true,
+            partial_scan_through: None,
         };
 
         let coinbase = MockCoinbase::new();
@@ -741,6 +756,73 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn partial_receives_advances_frontier_to_scanned_point() {
+        let config = test_config();
+        let mut state = PersistedState::default();
+        let now = Utc::now();
+
+        // Start with all chains at block 100, recent so errors are suppressed.
+        let recent = Utc::now() - Duration::hours(1);
+        for chain in Chain::iter() {
+            state.last_seen_block.insert(chain, LastSeenBlock {
+                block_number: 100,
+                updated_at: recent,
+            });
+        }
+
+        // Mock reports current block = 200 but only scanned up to 150.
+        // Confirmation floor = 200 - 14 = 186, so the frontier must
+        // clamp to the actual scanned point (150), below the floor.
+        let explorer = MockBlockExplorer {
+            receives: vec![UsdcReceive {
+                tx_hash: "0xpartial1".into(),
+                amount: dec!(500.00),
+                block_number: 120,
+                fetched_at: now - Duration::hours(1),
+            }],
+            block_height: 200,
+            fail_block_height: false,
+            fail_receives: false,
+            partial_scan_through: Some(150),
+        };
+
+        let mut coinbase = MockCoinbase::new();
+        coinbase.sell_result = Some(SellResult {
+            order_id: "order-p".into(),
+            usdc_sold: dec!(500.00),
+            usd_received: dec!(499.75),
+            executed_at: now,
+        });
+        coinbase.withdrawal_result = Some(WithdrawalResult {
+            withdrawal_transfer_id: "wd-p".into(),
+            usd_amount: dec!(499.75),
+            initiated_at: now,
+        });
+
+        let notifier = MockNotifier::new();
+        let explorers = mock_explorers(explorer);
+        let pass = DepositCheck::new(&config, &mut state, &explorers, &coinbase, &notifier);
+        let errs = pass.run().await;
+
+        assert!(errs.is_empty(), "unexpected errors: {errs:?}");
+
+        // The eligible deposit from the scanned range was processed.
+        assert_eq!(state.bank_payments.len(), 1);
+        assert!(state.processed_tx_hashes.contains("0xpartial1"));
+
+        // Frontier advanced to the last scanned block (150), below the
+        // confirmation floor (186) — next run resumes from 150 instead
+        // of re-scanning from 100.
+        for chain in Chain::iter() {
+            let lsb = state.last_seen_block.get(&chain).expect("last_seen_block missing");
+            assert_eq!(
+                lsb.block_number, 150,
+                "{chain}: frontier should clamp to partial scan end"
+            );
+        }
+    }
+
     // -- Discovery-only tests (no MockCoinbase needed) --
 
     #[tokio::test]
@@ -759,6 +841,7 @@ mod tests {
             block_height: 200,
             fail_block_height: false,
             fail_receives: false,
+            partial_scan_through: None,
         };
 
         let (tx, mut rx) = mpsc::channel::<EligibleDeposit>(32);
@@ -802,6 +885,7 @@ mod tests {
             block_height: 200,
             fail_block_height: false,
             fail_receives: false,
+            partial_scan_through: None,
         };
 
         let (tx, mut rx) = mpsc::channel::<EligibleDeposit>(32);
